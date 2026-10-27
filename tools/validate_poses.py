@@ -7,7 +7,7 @@ Renders: <out>/pose_<name>_{front,side}.png.
 
 Verdict is relative to a reference outfit known to work in game
 (default tests/fixtures/reference_poses.json). Per pose, FAIL when
-  max > max(ref_max * 1.25, 3.0)                         (tearing, broken weights)
+  max_elongation > max(ref * 1.25, 3.0 units)            (visible gap / tearing, broken weights)
   p99 > ref_p99 * 1.15 + 0.05                            (overall stretch)
   severe_stretch_pct > max(ref * 1.5, 0.5)               (edges stretched beyond 180 %)
   severe_compression_pct > ref + 1.0                     (edges squashed below 40 %)
@@ -56,6 +56,20 @@ def args():
     return p.parse_args(sys.argv[sys.argv.index("--") + 1:])
 
 
+def bone_resolver(smd_path):
+    """Pose bone names are written Mixamo-style; map them onto the outfit's own rig (ValveBiped...)."""
+    from retarget import Rig, conventions
+    from smd_io import read_smd
+    rig = Rig(read_smd(smd_path))
+    mx = conventions()["Mixamo-style"]
+    to_rig = {mx[j]: rig.joint[j] for j in rig.joint if j in mx}
+    spine = [b for b in rig.spine if b != rig.joint.get("hips")]
+    if spine:
+        to_rig["Spine"] = spine[0]
+        to_rig["Spine1"] = min(spine, key=lambda b: abs(rig.frac[b] - 0.75))
+    return lambda name: to_rig.get(name, name)
+
+
 def rotate_world(arm, bone, axis, deg):
     if bone not in arm.pose.bones:
         return
@@ -89,16 +103,19 @@ def dominant(ob, vi):
 
 
 def stretch(ob, rest, posed):
-    ratios = []
+    ratios, elong = [], []
     for e in ob.data.edges:
         a, b = e.vertices
         l0 = (rest[a] - rest[b]).length
         if l0 < 1e-4:
             continue
-        ratios.append(((posed[a] - posed[b]).length / l0, a))
+        l1 = (posed[a] - posed[b]).length
+        ratios.append((l1 / l0, a))
+        elong.append((l1 - l0, a))
     ratios.sort()
     n = len(ratios)
     worst = ratios[-1]
+    gap = max(elong)
 
     def zones(sample):
         acc = {}
@@ -106,7 +123,9 @@ def stretch(ob, rest, posed):
             b = dominant(ob, vi)
             acc[b] = acc.get(b, 0) + 1
         return dict(sorted(acc.items(), key=lambda x: -x[1])[:4])
-    return {"severe_compression_pct": round(100 * sum(1 for r, _ in ratios if r < 0.4) / n, 3),
+    return {"max_elongation": round(gap[0], 3), "max_elongation_bone": dominant(ob, gap[1]),
+            "max_elongation_pos": [round(x, 1) for x in rest[gap[1]]],
+            "severe_compression_pct": round(100 * sum(1 for r, _ in ratios if r < 0.4) / n, 3),
             "severe_stretch_pct": round(100 * sum(1 for r, _ in ratios if r > 1.8) / n, 3),
             "p01": round(ratios[int(n * 0.01)][0], 3), "p99": round(ratios[int(n * 0.99)][0], 3),
             "max": round(worst[0], 3), "max_bone": dominant(ob, worst[1]),
@@ -155,6 +174,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     ob = S.import_smd(a.smd)
     arm = ob.parent
+    resolve = bone_resolver(a.smd)
     rest = [ob.matrix_world @ v.co for v in ob.data.vertices]
     report = {"tris": sum(len(p.vertices) - 2 for p in ob.data.polygons)}
     report.update(static_checks(ob, a.smd))
@@ -171,14 +191,18 @@ def main():
     for name, ops in POSES.items():
         reset(arm)
         for bone, axis, deg in ops:
-            rotate_world(arm, bone, axis, deg)
+            rotate_world(arm, resolve(bone), axis, deg)
         st = stretch(ob, rest, posed_coords(ob))
         report["poses"][name] = st
         print("POSE", name, json.dumps(st))
         if ref:
             r = ref[name]
-            if st["max"] > max(r["max"] * 1.25, 3.0):
-                failures.append(f"{name}: stretch max {st['max']} (ref {r['max']}) {st['max_bone']} {st['max_pos']}")
+            # absolute gap, not ratio: two nearly coincident vertices that separate by 2 u give an
+            # enormous ratio while a 12 u tear between the legs of a robe gives a modest one
+            ref_gap = r.get("max_elongation", r["max"])
+            if st["max_elongation"] > max(ref_gap * 1.25, 3.0):
+                failures.append(f"{name}: gap {st['max_elongation']} u (ref {ref_gap} u) at "
+                                f"{st['max_elongation_bone']} {st['max_elongation_pos']}")
             if st["p99"] > r["p99"] * 1.15 + 0.05:
                 failures.append(f"{name}: stretch p99 {st['p99']} (ref {r['p99']})")
             if st["severe_stretch_pct"] > max(r["severe_stretch_pct"] * 1.5, 0.5):
@@ -196,7 +220,7 @@ def main():
         json.dump(report, f, indent=1, ensure_ascii=False)
     if a.write_reference:
         with open(a.write_reference, "w", encoding="utf-8") as f:
-            json.dump({"poses": {k: {m: v[m] for m in ("p01", "p99", "max", "severe_stretch_pct",
+            json.dump({"poses": {k: {m: v[m] for m in ("p01", "p99", "max", "max_elongation", "severe_stretch_pct",
                                                        "severe_compression_pct")}
                                  for k, v in report["poses"].items()}}, f, indent=1)
         print("REFERENCE written", a.write_reference)

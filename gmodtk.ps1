@@ -14,6 +14,7 @@ $python = @{
     'doctor' = 'doctor.py'; 'pipeline' = 'pipeline.py'; 'decompile' = 'mdl_to_smd.py'; 'audit' = 'audit_mdl.py'
     'qc' = 'write_qc.py'; 'pack' = 'pack.py'; 'rig-check' = 'rig_check.py'; 'normals' = 'smd_normals.py'
     'compare' = 'smd_compare.py'; 'weights' = 'smd_weights.py'; 'vtf' = 'vtf.py'; 'materials' = 'materials.py'
+    'retarget' = 'retarget.py'
 }
 $blender = @{
     'optimize' = 'optimize_outfit.py'; 'validate-lods' = 'validate_lods.py'; 'validate-poses' = 'validate_poses.py'
@@ -31,6 +32,11 @@ if ($Command -eq 'blend-audit') {
     & $bl -b $file --python (Join-Path $t 'blend_audit.py') -- @more 2>&1 | Where-Object { "$_" -match '^(ARMATURE|MESHES|FINDING|RESULT)' }
     exit $LASTEXITCODE
 }
+if ($Command -eq 'blend-export') {
+    $file, $more = $Rest
+    & $bl -b $file --python (Join-Path $t 'blend_to_smd.py') -- @more 2>&1 | Where-Object { "$_" -match '^EXPORT' }
+    exit $LASTEXITCODE
+}
 if ($Command -eq 'test') { & (Join-Path $PSScriptRoot 'tests\run_tests.ps1'); exit $LASTEXITCODE }
 @"
 gmod-outfit-toolkit  (Blender: $bl)
@@ -42,6 +48,8 @@ gmod-outfit-toolkit  (Blender: $bl)
                                     image -> VTF (DXT1/DXT5 auto, mipmaps, power of two) + VMT
   blend-audit <file.blend>          export mistakes: transforms, weights, missing images, rig
   rig-check <outfit.smd> <rig.smd>  skeleton compatibility (names, parents, rest pose)
+  blend-export <file.blend> --out <outfit.smd>   .blend -> .smd, transforms baked, weights limited to 3
+  retarget <outfit.smd> <target_rig.smd> <out.smd>   refit + re-skin onto another rig (ValveBiped -> server)
   decompile <model.mdl> <out>       .mdl -> .smd + info.json (Crowbar-identical)
   optimize -- --smd ... --out ...   decimation + LODs + weight cleanup + physics mesh
   validate-lods | validate-poses | validate-faces   quality gates (see README)

@@ -317,6 +317,42 @@ Test 'texture: PNG -> VTF (DXT1 opaque, DXT5 + $alphatest VMT, power of two, --m
     ($vmt -match '\$alphatest" "1"') -and ($vmt -match 'models/x/cutout') -and ($vmt -notmatch 'translucent')
 }
 
+& $py -I "$PSScriptRoot\make_valvebiped.py" $smd "$tmp\vb" | Out-Null
+
+Test 'retarget: ValveBiped T-pose outfit (x1.12, moved) back onto the reference rig = original geometry' {
+    & $py -I "$t\retarget.py" "$tmp\vb\valvebiped.smd" $smd "$tmp\vb\fit.smd" | Out-Null
+    $e = (& $py -I "$PSScriptRoot\position_error.py" "$tmp\vb\fit.smd" "$tmp\vb\expected.smd") -join ' '
+    $m = [regex]::Match($e, 'mean ([\d.]+) p99 ([\d.]+) max ([\d.]+) .*mismatch ([\d.]+)%')
+    & $py -I "$t\rig_check.py" "$tmp\vb\fit.smd" $smd | Out-Null
+    ($LASTEXITCODE -eq 0) -and ([double]$m.Groups[1].Value -lt 0.1) -and ([double]$m.Groups[2].Value -lt 0.5) -and
+    ([double]$m.Groups[3].Value -lt 1.0) -and ([double]$m.Groups[4].Value -lt 0.5)
+}
+
+Test 'retarget --no-fit control: renaming alone leaves the garment far off (p99 > 5 u)' {
+    & $py -I "$t\retarget.py" "$tmp\vb\valvebiped.smd" $smd "$tmp\vb\nofit.smd" --no-fit | Out-Null
+    $e = (& $py -I "$PSScriptRoot\position_error.py" "$tmp\vb\nofit.smd" "$tmp\vb\expected.smd") -join ' '
+    [double]([regex]::Match($e, 'p99 ([\d.]+)').Groups[1].Value) -gt 5
+}
+
+Test 'validate_poses: poses a ValveBiped rig through canonical joints (limbs really move)' {
+    & $bl -b --python "$t\validate_poses.py" -- --smd "$tmp\vb\valvebiped.smd" --out "$tmp\vb\poses" --no-render 2>&1 | Out-Null
+    $j = Get-Content "$tmp\vb\poses\pose_validation.json" -Raw | ConvertFrom-Json
+    ($j.poses.run.p99 -gt 1.05) -and ($j.poses.arms_up.max_elongation -gt 0.1) -and ($j.poses.twist.p99 -gt 1.02)
+}
+
+Test 'blend_to_smd: .blend export round trip = original (geometry, UVs, weights, skeleton)' {
+    & $bl -b "$tmp\blends\good.blend" --python "$t\blend_to_smd.py" -- --out "$tmp\blends\exported.smd" 2>&1 | Out-Null
+    & $py -I "$t\smd_compare.py" $smd "$tmp\blends\exported.smd" | Out-Null; $c = $LASTEXITCODE
+    & $py -I "$t\rig_check.py" "$tmp\blends\exported.smd" $smd --tolerance 0.001 | Out-Null
+    ($c -eq 0) -and ($LASTEXITCODE -eq 0)
+}
+
+Test 'blend_to_smd: unapplied armature scale control is caught downstream by rig_check' {
+    & $bl -b "$tmp\blends\bad.blend" --python "$t\blend_to_smd.py" -- --out "$tmp\blends\exported_bad.smd" 2>&1 | Out-Null
+    $v = (& $py -I "$t\rig_check.py" "$tmp\blends\exported_bad.smd" $smd) -join "`n"
+    ($LASTEXITCODE -eq 1) -and ($v -match 'off their target rest position')
+}
+
 Write-Host ""
 $results | Format-Table -AutoSize
 $fails = @($results | ? Result -ne 'OK').Count

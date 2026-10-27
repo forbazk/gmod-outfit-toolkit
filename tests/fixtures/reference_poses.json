@@ -4,6 +4,7 @@
    "p01": 0.697,
    "p99": 1.396,
    "max": 8.268,
+   "max_elongation": 11.845,
    "severe_stretch_pct": 0.233,
    "severe_compression_pct": 0.074
   },
@@ -11,6 +12,7 @@
    "p01": 0.603,
    "p99": 1.786,
    "max": 9.486,
+   "max_elongation": 13.655,
    "severe_stretch_pct": 0.946,
    "severe_compression_pct": 0.268
   },
@@ -18,6 +20,7 @@
    "p01": 0.669,
    "p99": 1.929,
    "max": 6.949,
+   "max_elongation": 6.822,
    "severe_stretch_pct": 1.416,
    "severe_compression_pct": 0.193
   },
@@ -25,6 +28,7 @@
    "p01": 0.887,
    "p99": 1.159,
    "max": 8.509,
+   "max_elongation": 1.435,
    "severe_stretch_pct": 0.187,
    "severe_compression_pct": 0.042
   },
@@ -32,6 +36,7 @@
    "p01": 0.896,
    "p99": 1.154,
    "max": 2.988,
+   "max_elongation": 1.065,
    "severe_stretch_pct": 0.049,
    "severe_compression_pct": 0.005
   }
