@@ -276,6 +276,26 @@ Test 'gmodtk launcher: finds Blender, runs Python and Blender tools' {
     ($h -match 'pipeline <model.mdl>') -and ($d -match 'RESULT OK')
 }
 
+Test 'dxt: codec agrees with Blender DDS reader (synthetic + real Valve blocks), quality, garbage control' {
+    $real = if (Test-Path "$fx\vtf_real") { "$fx\vtf_real" } else { "" }
+    $v = (& $bl -b --python "$PSScriptRoot\check_dxt.py" -- "$tmp\dxt" $real 2>&1) -join "`n"
+    ($v -match 'RESULT OK') -and ($v -notmatch 'CHECK FAIL') -and ([regex]::Matches($v, 'CHECK OK').Count -ge 11)
+}
+
+Test 'texture: PNG -> VTF (DXT1 opaque, DXT5 + $alphatest VMT, power of two, --max), exact file sizes' {
+    $d = "$tmp\dxt"
+    & $bl -b --python "$t\texture.py" -- "$d\flowers.png" "$d\out\flowers.vtf" 2>&1 | Out-Null
+    & $bl -b --python "$t\texture.py" -- "$d\cutout.png" "$d\out\cutout.vtf" --vmt "$d\out\cutout.vmt" --material-path "models/x/cutout" 2>&1 | Out-Null
+    & $bl -b --python "$t\texture.py" -- "$d\odd_300x200.png" "$d\out\odd.vtf" 2>&1 | Out-Null
+    & $bl -b --python "$t\texture.py" -- "$d\flowers.png" "$d\out\small.vtf" --max 64 2>&1 | Out-Null
+    $code = "import sys,os; sys.path.insert(0, r'$t'); from vtf import read_vtf`nfor n in ('flowers','cutout','odd','small'):`n r=read_vtf(os.path.join(r'$d\out', n+'.vtf')); print(n, r['valid'] and r['size']==r['expected_size'], r['width'], r['height'], r['format'], r['full_mip_chain'])"
+    $v = (& $py -I -c $code) -join "`n"
+    $vmt = Get-Content "$d\out\cutout.vmt" -Raw
+    ($v -match 'flowers True 256 256 DXT1 True') -and ($v -match 'cutout True 256 256 DXT5 True') -and
+    ($v -match 'odd True 256 128 DXT1 True') -and ($v -match 'small True 64 64 DXT1 True') -and
+    ($vmt -match '\$alphatest" "1"') -and ($vmt -match 'models/x/cutout') -and ($vmt -notmatch 'translucent')
+}
+
 Write-Host ""
 $results | Format-Table -AutoSize
 $fails = @($results | ? Result -ne 'OK').Count

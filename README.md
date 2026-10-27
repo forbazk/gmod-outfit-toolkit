@@ -9,7 +9,7 @@ by cost.
 
 Every tool ships with a test against a known reference, and every validator with a **negative
 control**: a deliberately broken input it must reject. A tool is only listed here once its tests
-pass (36 tests).
+pass (38 tests).
 
 ## Quick start
 
@@ -46,6 +46,7 @@ Every LOD is validated (surface distance at rest and posed, flipped normals, are
 | `pack.py` | Release folder in addon layout: model files + referenced materials/textures, no `.dx80.vtx` / `.sw.vtx`, missing files reported | Healthy materials exit 0; missing material exit 1 |
 | `blend_audit.py` | `.blend` checks: unapplied transforms, unskinned meshes, unweighted vertices, >3 influences, stray vertex groups, missing UVs / images, oversized or non power-of-two images, rig convention | Healthy `.blend` OK; broken `.blend` with 6 planted defects FAIL |
 | `rig_check.py` | Skeleton compatibility: naming convention (ValveBiped / Mixamo-style), missing bones, parents, rest-pose world positions | World positions = Blender's to 0.0001 u; moved bone and ValveBiped controls FAIL |
+| `texture.py` + `dxt.py` | Image (PNG/TGA/JPG) -> `.vtf`: power-of-two resize, `--max` side, DXT1 when opaque / DXT5 with alpha, full mip chain averaged in linear light (`--normal` renormalizes normal maps), optional `.vmt` with `$alphatest` | Decoder agrees with Blender's DDS reader (max 2/255) on synthetic images and on 10 real Valve-encoded textures; PSNR 35-41 dB; garbage blocks rejected; output files re-read at their exact size |
 | `vtf.py` | `.vtf` header reader: size, format, mipmaps, flags, VRAM, truncation | Spec-built files; 10 real VTF files (7.1/7.2/7.5) match their byte size exactly |
 | `materials.py` | `.vmt` parser and engine-like material lookup through `$cdmaterials` (case-insensitive) | Through doctor / pack tests |
 | `mdl_to_smd.py` | Decompiles a v48 `.mdl` (all bodyparts, LOD0) to `.smd` + `info.json` (attachments, hitboxes, sequences) without Crowbar | 100 % identical to Crowbar 0.74: geometry, UVs, normals, weights, winding, skeleton |
@@ -70,7 +71,7 @@ with `tailor.py` on any Mixamo-style skeleton.
 ## Tests
 
 ```powershell
-.\gmodtk.ps1 test        # 36 tests, about 3 minutes
+.\gmodtk.ps1 test        # 38 tests, about 3 minutes
 ```
 
 The suite needs a local reference model in `tests/fixtures` (not distributed, see
@@ -87,7 +88,7 @@ The suite needs a local reference model in `tests/fixtures` (not distributed, se
   flipped-normal measure and the renders do.
 - **Invisible influences**: ~5 % of vertices of a typical outfit carry bone weights under 5 %.
   They change nothing visually but count toward bones per vertex and per hardware batch.
-- **Textures** usually outweigh the mesh: uncompressed BGRA8888 is 4x DXT5 and 8x DXT1, a 4096
+- **Textures** usually outweigh the mesh (`texture` converts them right): uncompressed BGRA8888 is 4x DXT5 and 8x DXT1, a 4096
   texture is 4x a 2048, and missing mipmaps cause shimmering at distance.
 - **`$mostlyopaque`** sets `TRANSLUCENT_TWOPASS` (drawn in both opaque and translucent passes);
   prefer `$alphatest` over `$translucent`.

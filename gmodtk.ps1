@@ -17,7 +17,7 @@ $python = @{
 }
 $blender = @{
     'optimize' = 'optimize_outfit.py'; 'validate-lods' = 'validate_lods.py'; 'validate-poses' = 'validate_poses.py'
-    'validate-faces' = 'validate_faces.py'
+    'validate-faces' = 'validate_faces.py'; 'texture' = 'texture.py'
 }
 if ($python.ContainsKey($Command)) {
     & $py -I (Join-Path $t $python[$Command]) @Rest; exit $LASTEXITCODE
@@ -38,6 +38,8 @@ gmod-outfit-toolkit  (Blender: $bl)
   pipeline <model.mdl> <out>        doctor -> decompile -> optimize -> validate -> QC -> report (one command)
   doctor <model.mdl|folder>         diagnosis, score, fixes and gains; a folder ranks every outfit
   pack <model.mdl> <out>            clean release folder (no .dx80/.sw), missing materials reported
+  texture <in.png> <out.vtf> [--vmt out.vmt --material-path p] [--max 2048] [--normal]
+                                    image -> VTF (DXT1/DXT5 auto, mipmaps, power of two) + VMT
   blend-audit <file.blend>          export mistakes: transforms, weights, missing images, rig
   rig-check <outfit.smd> <rig.smd>  skeleton compatibility (names, parents, rest pose)
   decompile <model.mdl> <out>       .mdl -> .smd + info.json (Crowbar-identical)
