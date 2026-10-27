@@ -1,0 +1,39 @@
+{
+ "poses": {
+  "walk": {
+   "p01": 0.697,
+   "p99": 1.396,
+   "max": 8.268,
+   "severe_stretch_pct": 0.233,
+   "severe_compression_pct": 0.074
+  },
+  "run": {
+   "p01": 0.603,
+   "p99": 1.786,
+   "max": 9.486,
+   "severe_stretch_pct": 0.946,
+   "severe_compression_pct": 0.268
+  },
+  "crouch": {
+   "p01": 0.669,
+   "p99": 1.929,
+   "max": 6.949,
+   "severe_stretch_pct": 1.416,
+   "severe_compression_pct": 0.193
+  },
+  "arms_up": {
+   "p01": 0.887,
+   "p99": 1.159,
+   "max": 8.509,
+   "severe_stretch_pct": 0.187,
+   "severe_compression_pct": 0.042
+  },
+  "twist": {
+   "p01": 0.896,
+   "p99": 1.154,
+   "max": 2.988,
+   "severe_stretch_pct": 0.049,
+   "severe_compression_pct": 0.005
+  }
+ }
+}

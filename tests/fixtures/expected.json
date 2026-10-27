@@ -1,0 +1,14 @@
+{
+ "_comment": "Known values of the local reference model (tests/fixtures/reference.*). Regenerate them by hand if you switch reference models (see tests/fixtures/README.md).",
+ "vtx_tris_lod0": 55339,
+ "bones": 101,
+ "unweighted_bones": 23,
+ "mdl_flag": "TRANSLUCENT_TWOPASS",
+ "zero_weight_bone": "RightForeArm",
+ "bbox_max": "[27.34, 9.49, 68.49]",
+ "attachments": 4,
+ "hitboxes": 56,
+ "bodygroups": 3,
+ "lod_targets": "20000,10000,5000,2500",
+ "physics_bones": "Hips,RightUpLeg,RightLeg,LeftUpLeg,LeftLeg,LeftFoot,Spine,Spine1,RightShoulder,RightArm,LeftShoulder,LeftArm,LeftForeArm,LeftHand,RightForeArm,RightHand,Head,RightFoot"
+}

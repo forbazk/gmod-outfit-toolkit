@@ -1,0 +1,17 @@
+# Reference models are third-party assets: never commit them
+tests/fixtures/*
+!tests/fixtures/README.md
+!tests/fixtures/expected.json
+!tests/fixtures/reference_poses.json
+
+# Build outputs
+*.mdl
+*.vvd
+*.vtx
+*.phy
+*.blend
+*.blend1
+out/
+build/
+__pycache__/
+*.pyc
