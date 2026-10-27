@@ -18,6 +18,7 @@ pass (38 tests).
 .\gmodtk.ps1 pipeline path\to\outfit.mdl out\outfit    # optimize + validate + QC + report, ~25 s
 .\gmodtk.ps1 blend-audit path\to\outfit.blend         # catch export mistakes before compiling
 .\gmodtk.ps1 pack    path\to\outfit.mdl out\release   # clean release folder, nothing useless shipped
+.\gmodtk.ps1 texture outfit.png outfit.vtf --vmt outfit.vmt --material-path models/me/outfit   # PNG -> VTF + VMT
 .\gmodtk.ps1 help
 ```
 
