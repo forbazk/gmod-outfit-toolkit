@@ -3,7 +3,7 @@
 Usage:
   blender -b --python optimize_outfit.py -- --smd outfit.smd --out folder
           [--tris 20000,10000,5000,2500] [--phys 1500] [--phys-bones Hips,Spine,...]
-          [--normals smooth|decimate|nearest|lnorproj]
+          [--normals smooth|decimate|nearest|lnorproj] [--min-weight 0.02]
   --tris 0: round trip without decimation (exporter test)
 
 Outputs: <name>.smd (LOD0), <name>_lod1..n.smd, <name>_phys.smd, report.json
@@ -31,6 +31,8 @@ def args():
     # "smooth" validated: 0.01 % flipped normals. nearest/lnorproj transfer picks the back side of
     # multi-layer cloth (1.6 % flipped -> dark patches); decimate leaves darkened skirt hems.
     p.add_argument("--normals", default="smooth", choices=["smooth", "decimate", "nearest", "lnorproj"])
+    # influences under 2 % are invisible but still count in bones per vertex / per hardware batch
+    p.add_argument("--min-weight", type=float, default=0.0, help="drop bone influences below this fraction")
     return p.parse_args(sys.argv[sys.argv.index("--") + 1:])
 
 
@@ -71,7 +73,7 @@ def main():
         ob = duplicate(src, f"{name}_lod{k}")
         decimate(ob, src, target, a.normals)
         fname = f"{name}.smd" if k == 0 else f"{name}_lod{k}.smd"
-        report["lods"].append(write_smd(ob, os.path.join(a.out, fname), header, nodes))
+        report["lods"].append(write_smd(ob, os.path.join(a.out, fname), header, nodes, min_w=a.min_weight))
         print("LOD", report["lods"][-1])
     if a.phys_bones and a.phys:
         keep = a.phys_bones.split(",")

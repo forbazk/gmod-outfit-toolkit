@@ -52,9 +52,12 @@ def apply_modifier(ob, mod):
         bpy.ops.object.modifier_apply(modifier=mod.name)
 
 
-def vertex_weights(ob, nodes, remap=None, max_w=3):
+def vertex_weights(ob, nodes, remap=None, max_w=3, min_w=0.0):
+    """Per vertex: up to max_w (bone index, weight), normalized. Influences below min_w (relative to
+    the vertex's total) are dropped first, the strongest one is always kept.
+    -> (weights, unweighted_count, pruned_influences)"""
     names = {g.index: g.name for g in ob.vertex_groups}
-    out, unweighted = [], 0
+    out, unweighted, pruned = [], 0, 0
     for v in ob.data.vertices:
         acc = {}
         for g in v.groups:
@@ -64,20 +67,27 @@ def vertex_weights(ob, nodes, remap=None, max_w=3):
             if remap:
                 b = remap[b]
             acc[nodes[b]] = acc.get(nodes[b], 0) + g.weight
-        w = sorted(acc.items(), key=lambda x: -x[1])[:max_w]
+        w = sorted(acc.items(), key=lambda x: -x[1])
+        if min_w and w:
+            total = sum(x for _, x in w)
+            kept = [w[0]] + [p for p in w[1:] if p[1] / total >= min_w]
+            pruned += len(w) - len(kept)
+            w = kept
+        w = w[:max_w]
         if not w:
             unweighted += 1
             w = [(nodes.get("Spine1", 0), 1.0)]
         total = sum(x for _, x in w)
         out.append([(b, x / total) for b, x in w])
-    return out, unweighted
+    return out, unweighted, pruned
 
 
-def write_smd(ob, path, header, nodes, remap=None, max_w=3, material_map=None):
-    """material_map: Blender material name -> SMD material name (default: Blender name)."""
+def write_smd(ob, path, header, nodes, remap=None, max_w=3, material_map=None, min_w=0.0):
+    """material_map: Blender material name -> SMD material name (default: Blender name).
+    min_w: drop bone influences below this fraction (e.g. 0.02), see vertex_weights."""
     me = ob.data
     me.calc_loop_triangles()
-    weights, unweighted = vertex_weights(ob, nodes, remap, max_w)
+    weights, unweighted, pruned = vertex_weights(ob, nodes, remap, max_w, min_w)
     uv = me.uv_layers.active.data
     normals = me.corner_normals
     mats = [m.name if m else "default" for m in me.materials] or ["default"]
@@ -96,7 +106,7 @@ def write_smd(ob, path, header, nodes, remap=None, max_w=3, material_map=None):
                         f"{u.x:.6f} {u.y:.6f} {len(w)} {ws}\n")
         f.write("end\n")
     return {"file": os.path.basename(path), "tris": len(me.loop_triangles),
-            "verts": len(me.vertices), "unweighted": unweighted}
+            "verts": len(me.vertices), "unweighted": unweighted, "pruned_influences": pruned}
 
 
 def phys_remap(nodes, parents, keep):
