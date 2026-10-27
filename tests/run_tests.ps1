@@ -161,6 +161,121 @@ Test 'tailor: example garment passes poses, normals and backface checks' {
     ($a -match 'VERDICT PASS') -and ($n -eq 0) -and ($f -match 'RESULT OK')
 }
 
+Test 'rig_check: reference vs itself OK' {
+    & $py -I "$t\rig_check.py" $smd $smd | Out-Null; $LASTEXITCODE -eq 0
+}
+
+Test 'rig_check: moved_bone control FAIL (rest offset)' {
+    $v = (& $py -I "$t\rig_check.py" "$tmp\neg\moved_bone.smd" $smd) -join "`n"
+    ($LASTEXITCODE -eq 1) -and ($v -match 'off their target rest position')
+}
+
+Test 'rig_check: valvebiped control FAIL (naming convention)' {
+    $v = (& $py -I "$t\rig_check.py" "$tmp\neg\valvebiped.smd" $smd) -join "`n"
+    ($LASTEXITCODE -eq 1) -and ($v -match 'naming convention differs')
+}
+
+Test 'vtf: spec-built files read exactly; truncated and fake files rejected' {
+    New-Item -ItemType Directory -Force "$tmp\vtf" | Out-Null
+    & $py -I "$PSScriptRoot\make_vtf.py" "$tmp\vtf\good.vtf" 1024 1024 15 0
+    & $py -I "$PSScriptRoot\make_vtf.py" "$tmp\vtf\fat.vtf" 4096 4096 12 1
+    & $py -I "$PSScriptRoot\make_vtf.py" "$tmp\vtf\cut.vtf" 512 512 13 0 --truncate
+    Set-Content "$tmp\vtf\fake.vtf" "not a texture"
+    $v = (& $py -I "$t\vtf.py" "$tmp\vtf\good.vtf" "$tmp\vtf\fat.vtf" "$tmp\vtf\cut.vtf" "$tmp\vtf\fake.vtf") -join "`n"
+    ($v -match 'good.vtf: 1024x1024 DXT5 mips 11 .*VRAM 1,365 KB') -and ($v -match 'fat.vtf: 4096x4096 BGRA8888 mips 1 .*VRAM 65,536 KB') -and
+    ($v -match 'cut.vtf: INVALID truncated') -and ($v -match 'fake.vtf: INVALID not a VTF')
+}
+
+if (Test-Path "$fx\vtf_real") {
+    Test 'vtf: real files from Valve tools (tests/fixtures/vtf_real) parse to their exact byte size' {
+        $code = "import sys,glob,os; sys.path.insert(0, r'$t'); from vtf import read_vtf; rs=[read_vtf(f) for f in glob.glob(r'$fx\vtf_real\*.vtf') if open(f,'rb').read(4)==b'VTF\0']; print(len(rs), sum(r['valid'] and r['size']==r['expected_size'] for r in rs))"
+        $n = (& $py -I -c $code) -split ' '
+        ([int]$n[0] -gt 0) -and ($n[0] -eq $n[1])
+    }
+}
+
+& $py -I "$PSScriptRoot\make_materials.py" $mdl "$tmp\mat_good" good | Out-Null
+& $py -I "$PSScriptRoot\make_materials.py" $mdl "$tmp\mat_bad" bad | Out-Null
+
+Test 'doctor: reference findings (no LOD critical, triangles, twopass) and score' {
+    $j = (& $py -I "$t\doctor.py" $mdl --out "$tmp\doc") | Out-Null; $r = (Get-Content "$tmp\doc\report.json" -Raw | ConvertFrom-Json)[0]
+    $p = ($r.findings | % problem) -join "`n"
+    ($r.score -lt 70) -and ($p -match 'no LOD') -and ($p -match 'TRANSLUCENT_TWOPASS') -and ($r.tris_heaviest -ge $x.vtx_tris_lod0 * 0.9)
+}
+
+Test 'doctor: healthy materials -> no texture finding' {
+    & $py -I "$t\doctor.py" $mdl --materials "$tmp\mat_good" --out "$tmp\doc_good" | Out-Null
+    $r = (Get-Content "$tmp\doc_good\report.json" -Raw | ConvertFrom-Json)[0]
+    (@($r.findings | ? area -eq 'textures').Count -eq 0) -and ($r.textures.Count -gt 0)
+}
+
+Test 'doctor: broken materials control -> missing, uncompressed, oversized, no mips, translucent' {
+    & $py -I "$t\doctor.py" $mdl --materials "$tmp\mat_bad" --out "$tmp\doc_bad" | Out-Null
+    $p = ((Get-Content "$tmp\doc_bad\report.json" -Raw | ConvertFrom-Json)[0].findings | % problem) -join "`n"
+    ($p -match 'not found in any \$cdmaterials') -and ($p -match 'uncompressed BGRA8888') -and ($p -match '4096x4096 texture') -and
+    ($p -match 'mipmap\(s\) only') -and ($p -match 'uses \$translucent')
+}
+
+New-Item -ItemType Directory -Force "$tmp\batch\clean", "$tmp\batch\waste" | Out-Null
+foreach ($e in 'mdl', 'vvd', 'dx90.vtx', 'phy') { Copy-Item "$fx\reference.$e" "$tmp\batch\clean\"; Copy-Item "$fx\reference.$e" "$tmp\batch\waste\" }
+Copy-Item "$fx\reference.dx90.vtx" "$tmp\batch\waste\reference.dx80.vtx"
+
+Test 'doctor: folder mode ranks every model, wasted .dx80.vtx counted' {
+    & $py -I "$t\doctor.py" "$tmp\batch" --out "$tmp\doc_batch" | Out-Null
+    $r = Get-Content "$tmp\doc_batch\report.json" -Raw | ConvertFrom-Json
+    $w = $r | ? { $_.model -match 'waste' }; $c = $r | ? { $_.model -match 'clean' }
+    ($r.Count -eq 2) -and ($w.wasted_bytes -gt 0) -and ($c.wasted_bytes -eq 0) -and ($w.score -lt $c.score)
+}
+
+Test 'pack: release folder without .dx80.vtx, materials copied, exit 0' {
+    & $py -I "$t\pack.py" "$tmp\batch\waste\reference.mdl" "$tmp\pack" --materials "$tmp\mat_good" | Out-Null
+    $files = @(Get-ChildItem "$tmp\pack" -Recurse -File)
+    ($LASTEXITCODE -eq 0) -and (@($files | ? Name -like '*.dx80.vtx').Count -eq 0) -and (@($files | ? Name -like '*.vtf').Count -gt 0) -and
+    (@($files | ? Name -like '*.mdl').Count -eq 1)
+}
+
+Test 'pack: missing material control -> INCOMPLETE, exit 1' {
+    $v = (& $py -I "$t\pack.py" "$tmp\batch\waste\reference.mdl" "$tmp\pack_bad" --materials "$tmp\mat_bad") -join "`n"
+    ($LASTEXITCODE -eq 1) -and ($v -match 'MISSING material')
+}
+
+Test 'optimize_outfit --min-weight 0.02: no influence under 2 %, LOD still PASS' {
+    & $bl -b --python "$t\optimize_outfit.py" -- --smd $smd --out "$tmp\mw" --tris 0 --min-weight 0.02 2>&1 | Out-Null
+    $count = { param($f) $code = "import sys; tri=False; low=0`nfor l in open(r'$f', encoding='latin-1'):`n s=l.split()`n if s and s[0]=='triangles': tri=True; continue`n if tri and len(s)>10: low+=sum(1 for j in range(int(s[9])) if float(s[11+2*j])<0.0199)`nprint(low)"; [int](& $py -I -c $code) }
+    $before = & $count $smd
+    $after = & $count "$tmp\mw\reference.smd"
+    $v = (& $bl -b --python "$t\validate_lods.py" -- --ref $smd --out "$tmp\mw\v" "$tmp\mw\reference.smd" 2>&1) -join "`n"
+    ($before -gt 0) -and ($after -eq 0) -and ($v -match 'VERDICT \S+ PASS')
+}
+
+& $bl -b --python "$PSScriptRoot\make_blends.py" -- $smd "$tmp\blends" 2>&1 | Out-Null
+
+Test 'blend_audit: healthy .blend OK' {
+    $v = (& $bl -b "$tmp\blends\good.blend" --python "$t\blend_audit.py" 2>&1) -join "`n"
+    $v -match 'RESULT OK'
+}
+
+Test 'blend_audit: broken .blend control -> scale, unweighted, missing image, stray group, >3 influences' {
+    $v = (& $bl -b "$tmp\blends\bad.blend" --python "$t\blend_audit.py" 2>&1) -join "`n"
+    ($v -match 'RESULT FAIL') -and ($v -match 'armature transform not applied') -and ($v -match '50 vertices without any bone weight') -and
+    ($v -match "image 'lost' missing") -and ($v -match 'NotABone') -and ($v -match '5 vertices with more than 3')
+}
+
+Test 'pipeline: compiled model -> 4 validated LODs, QC with LODs + physics from the .phy, report' {
+    $v = (& $py -I "$t\pipeline.py" "$tmp\batch\waste\reference.mdl" "$tmp\pipe") -join "`n"
+    $qc = Get-Content (Get-ChildItem "$tmp\pipe\optimized\*.qc")[0].FullName -Raw
+    $nphys = @(($x.physics_bones -split ',')).Count
+    ($LASTEXITCODE -eq 0) -and ($v -match 'RESULT OK') -and (([regex]::Matches($v, '\*\*PASS\*\*')).Count -eq 4) -and
+    (([regex]::Matches($qc, '\$lod \d')).Count -eq 3) -and (([regex]::Matches($qc, '\$jointconstrain')).Count -eq ($nphys - 1) * 3) -and
+    (Test-Path "$tmp\pipe\report.md")
+}
+
+Test 'gmodtk launcher: finds Blender, runs Python and Blender tools' {
+    $h = (& "$root\gmodtk.ps1" help) -join "`n"
+    $d = (& "$root\gmodtk.ps1" rig-check $smd $smd) -join "`n"
+    ($h -match 'pipeline <model.mdl>') -and ($d -match 'RESULT OK')
+}
+
 Write-Host ""
 $results | Format-Table -AutoSize
 $fails = @($results | ? Result -ne 'OK').Count
