@@ -9,7 +9,7 @@ by cost.
 
 Every tool ships with a test against a known reference, and every validator with a **negative
 control**: a deliberately broken input it must reject. A tool is only listed here once its tests
-pass (38 tests).
+pass (40 tests).
 
 ## Quick start
 
@@ -35,6 +35,7 @@ pass (38 tests).
 | `$mostlyopaque` (two render passes) | yes | no |
 | Invisible bone influences | 966 | removed |
 | Physics bones | 18 | 18 (read from the original `.phy`) |
+| `$lod` switch points | - | 24.6 / 37.7 / 63.3: each LOD kicks in when its error is under 1 pixel |
 
 Every LOD is validated (surface distance at rest and posed, flipped normals, areas) and rendered.
 
@@ -42,7 +43,7 @@ Every LOD is validated (surface distance at rest and posed, flipped normals, are
 
 | Command / tool | What it does | Validated by |
 |---|---|---|
-| `pipeline.py` | doctor -> decompile -> decimate + LODs + weight cleanup + physics mesh -> validate -> QC -> before/after report | Reference outfit: 4 LODs PASS, QC with LODs and physics bones from the `.phy` |
+| `pipeline.py` | doctor -> decompile -> decimate + LODs + weight cleanup + physics mesh -> validate -> QC with computed `$lod` switch points -> before/after report | Reference outfit: 4 LODs PASS, QC with LODs and physics bones from the `.phy` |
 | `doctor.py` | Diagnosis of a model or a whole folder: download size and wasted files, triangles per LOD / bodygroup, draw calls, LODs, translucency, skinning, physics, every texture (missing, resolution, compression, mipmaps, VRAM). Severity, fix and expected gain per finding, 0-100 score, ranking | Reference findings; healthy vs broken materials; folder ranking |
 | `pack.py` | Release folder in addon layout: model files + referenced materials/textures, no `.dx80.vtx` / `.sw.vtx`, missing files reported | Healthy materials exit 0; missing material exit 1 |
 | `blend_audit.py` | `.blend` checks: unapplied transforms, unskinned meshes, unweighted vertices, >3 influences, stray vertex groups, missing UVs / images, oversized or non power-of-two images, rig convention | Healthy `.blend` OK; broken `.blend` with 6 planted defects FAIL |
@@ -72,7 +73,7 @@ with `tailor.py` on any Mixamo-style skeleton.
 ## Tests
 
 ```powershell
-.\gmodtk.ps1 test        # 38 tests, about 3 minutes
+.\gmodtk.ps1 test        # 40 tests, about 3 minutes
 ```
 
 The suite needs a local reference model in `tests/fixtures` (not distributed, see
@@ -81,6 +82,10 @@ The suite needs a local reference model in `tests/fixtures` (not distributed, se
 
 ## Knowledge baked into the tools
 
+- **LOD switch points are computed, not guessed**: Valve defines the `$lod` threshold as
+  100 / (screen pixels per unit), so an error of e units stays under 1 pixel when the threshold is
+  100 x e. `pipeline` measures each LOD's worst p99 error (rest and posed) and writes exactly that
+  (`--pixel-error` to trade quality for speed); decimal thresholds are quoted as the wiki requires.
 - **No LOD is the most expensive mistake**: a 50k-triangle outfit costs the same at 100 m as up
   close. Four LODs plus a shadow LOD cut far-away cost by ~95 %.
 - **Normals after decimation**: recompute them (smooth by angle). Transferring them from the

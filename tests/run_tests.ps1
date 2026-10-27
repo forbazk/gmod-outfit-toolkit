@@ -266,8 +266,29 @@ Test 'pipeline: compiled model -> 4 validated LODs, QC with LODs + physics from 
     $qc = Get-Content (Get-ChildItem "$tmp\pipe\optimized\*.qc")[0].FullName -Raw
     $nphys = @(($x.physics_bones -split ',')).Count
     ($LASTEXITCODE -eq 0) -and ($v -match 'RESULT OK') -and (([regex]::Matches($v, '\*\*PASS\*\*')).Count -eq 4) -and
-    (([regex]::Matches($qc, '\$lod \d')).Count -eq 3) -and (([regex]::Matches($qc, '\$jointconstrain')).Count -eq ($nphys - 1) * 3) -and
+    (([regex]::Matches($qc, '\$lod "?\d')).Count -eq 3) -and (([regex]::Matches($qc, '\$jointconstrain')).Count -eq ($nphys - 1) * 3) -and
     (Test-Path "$tmp\pipe\report.md")
+}
+
+Test 'pipeline: $lod values = 100 x measured LOD error (1 px), increasing, quoted decimals' {
+    $j = Get-Content "$tmp\pipe\optimized\validation\validation.json" -Raw | ConvertFrom-Json
+    $qc = Get-Content (Get-ChildItem "$tmp\pipe\optimized\*.qc")[0].FullName -Raw
+    $got = [regex]::Matches($qc, '\$lod "?([\d.]+)"?') | % { [double]$_.Groups[1].Value }
+    $exp = @(); $prev = 0
+    foreach ($k in 1..3) {
+        $r = ($j.PSObject.Properties | ? { $_.Name -match "_lod$k\.smd$" }).Value
+        $e = (@($r.rest.lod_to_ref.p99, $r.rest.ref_to_lod.p99, $r.posed.lod_to_ref.p99, $r.posed.ref_to_lod.p99) | Measure-Object -Maximum).Maximum
+        $v = [Math]::Round([Math]::Max(100 * $e, 1.0), 1); if ($v -le $prev) { $v = $prev + 0.5 }; $exp += $v; $prev = $v
+    }
+    $ok = $got.Count -eq 3
+    for ($k = 0; $k -lt 3; $k++) { $ok = $ok -and ([Math]::Abs($got[$k] - $exp[$k]) -lt 0.051) }
+    $ok -and ($got[0] -lt $got[1]) -and ($got[1] -lt $got[2]) -and ($qc -match '\$lod "\d+\.\d"')
+}
+
+Test 'write_qc: integer $lod values stay unquoted' {
+    & $py -I "$t\write_qc.py" "$tmp\decomp\info.json" "$tmp\opt" "$tmp\opt\int.qc" --lods 10,20,40 | Out-Null
+    $q = Get-Content "$tmp\opt\int.qc" -Raw
+    ($q -match '\$lod 10\r?\n') -and ($q -notmatch '\$lod "')
 }
 
 Test 'gmodtk launcher: finds Blender, runs Python and Blender tools' {

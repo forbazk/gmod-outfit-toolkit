@@ -61,7 +61,9 @@ def main():
         f = f"{stem}_lod{k}.smd"
         if not os.path.exists(os.path.join(d, f)):
             break
-        w(f"$lod {dist}\n{{\n\treplacemodel \"{ref}\" \"{f}\"\n}}")
+        # Valve wiki: floating-point thresholds must be quoted
+        value = dist if float(dist).is_integer() else f'"{dist}"'
+        w(f"$lod {value}\n{{\n\treplacemodel \"{ref}\" \"{f}\"\n}}")
         last = f
     if last:
         w(f"$shadowlod\n{{\n\treplacemodel \"{ref}\" \"{last}\"\n}}")

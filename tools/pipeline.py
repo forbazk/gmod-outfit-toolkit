@@ -50,6 +50,29 @@ def phys_bones(mdl):
     return re.findall(r'solid \{\s*"index" "\d+"\s*"name" "([^"]+)"', text)
 
 
+def lod_thresholds(validation, lod_files, pixel_error):
+    """$lod switch values from measured LOD error.
+
+    Valve: $lod threshold = 100 / (screen pixels per unit). An error of e units therefore covers
+    e * 100 / threshold pixels; it stays under `pixel_error` pixels when threshold >= 100 * e / pixel_error.
+    e = worst p99 surface distance of the LOD (both directions, at rest and posed).
+    """
+    out = []
+    for f in lod_files[1:]:
+        r = next(v for k, v in validation.items() if os.path.basename(k) == os.path.basename(f))
+        err = max(r[s][d]["p99"] for s in ("rest", "posed") for d in ("lod_to_ref", "ref_to_lod"))
+        t = round(max(100 * err / pixel_error, 1.0), 1)
+        if out and t <= out[-1]:
+            t = round(out[-1] + 0.5, 1)
+        out.append(t)
+    return out
+
+
+def switch_distance(threshold, screen_height=1080, tan_half_vfov=0.5774):
+    """Approximate switch distance in units (Garry's Mod default FOV 75 on a 4:3 basis, 1080p)."""
+    return threshold * screen_height / (200 * tan_half_vfov)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("model")
@@ -58,6 +81,8 @@ def main():
     p.add_argument("--min-weight", default="0.02")
     p.add_argument("--phys", default="1500")
     p.add_argument("--materials")
+    p.add_argument("--pixel-error", type=float, default=1.0,
+                   help="max on-screen error (pixels) when a LOD kicks in; sets the $lod thresholds")
     a = p.parse_args()
     bl, py = find_blender(), sys.executable
     os.makedirs(a.out, exist_ok=True)
@@ -77,12 +102,15 @@ def main():
     val = run([bl, "-b", "--python", os.path.join(HERE, "validate_lods.py"), "--", "--ref", main_smd,
                "--out", os.path.join(opt, "validation")] + lods, "validate LODs")
     verdicts = re.findall(r"VERDICT (\S+) (PASS|FAIL) (.*)", val)
+    validation = json.load(open(os.path.join(opt, "validation", "validation.json"), encoding="utf-8"))
+    thresholds = lod_thresholds(validation, lods, a.pixel_error)
     for bp in info["bodyparts"][1:]:
         for m in bp["models"]:
             if m:
                 shutil.copyfile(os.path.join(dec, m), os.path.join(opt, m))
     qc = os.path.join(opt, os.path.splitext(os.path.basename(a.model))[0] + ".qc")
-    cmd = [py, "-I", os.path.join(HERE, "write_qc.py"), os.path.join(dec, "info.json"), opt, qc]
+    cmd = [py, "-I", os.path.join(HERE, "write_qc.py"), os.path.join(dec, "info.json"), opt, qc,
+           "--lods", ",".join(f"{t:g}" for t in thresholds)]
     if bones:
         cmd += ["--phys-bones", ",".join(bones)]
     run(cmd, "write QC")
@@ -99,7 +127,12 @@ def main():
              f"| $mostlyopaque | {'yes' if 'TRANSLUCENT_TWOPASS' in before.get('flags', []) else '-'} | no |",
              f"| Invisible bone influences removed | - | {pruned:,} |",
              f"| Physics bones | {len(bones)} | {len(bones)} (from the original .phy) |", "",
-             "## Validation", ""]
+             f"## LOD switch points (error under {a.pixel_error:g} px when each LOD kicks in)", "",
+             "| LOD | Triangles | $lod value | ~distance at 1080p | ~distance at 1440p |", "|---|---:|---:|---:|---:|"]
+    lines += [f"| {k + 1} | {tri_lods[k + 1]:,} | {t:g} | {switch_distance(t):,.0f} u "
+              f"({switch_distance(t) * 0.01905:.1f} m) | {switch_distance(t, 1440):,.0f} u |"
+              for k, t in enumerate(thresholds)]
+    lines += ["", "## Validation", ""]
     lines += [f"- `{v[0]}`: **{v[1]}** {v[2] if v[2] != '[]' else ''}" for v in verdicts]
     lines += ["", f"Renders: `{os.path.join(opt, 'validation')}`", "", "## Doctor findings before optimization", ""]
 
